@@ -4,21 +4,21 @@ React + NestJS + Prisma + MySQL 的本地全栈课程设计。业务数据持久
 
 ## 启动与登录
 
-项目路径：`C:\Users\Administrator\Desktop\学习\课设`
+需要 Node.js 22.12+、npm。数据库可用 **Windows 本机 MySQL 8.4 一键**，或 **自备 MySQL / Docker**。
 
-本机已配置 MySQL 8.4，可直接双击根目录的 **`启动平台.cmd`**。启动完成后打开：
+启动完成后打开：
 
 - 前端：<http://127.0.0.1:5173>
 - API：`http://127.0.0.1:3000/api`
-- 本项目 MySQL：`127.0.0.1:3307`，数据库 `nanyao`
+- MySQL（默认）：`127.0.0.1:3307`，数据库 `nanyao`
 - 演示账号：管理员 `admin`，种植人员 `farmer`
-- 随机生成的初始密码：查看 **`.local/演示账号.txt`**
+- 随机生成的初始密码：查看 **`.local/演示账号.txt`**（一键脚本生成后）
 
-启动窗口需要保持打开。不要在已经运行时重复启动。关闭窗口或按 `Ctrl+C` 停止前后端；`npm run db:stop` 安全停止本项目数据库，保留数据。
+API 与 Vite 开发服务器均绑定 **`127.0.0.1`**，请勿改为 `0.0.0.0` 对外暴露。登录接口带简单内存限流与失败延迟，仍只适合本机演示。
 
-### 首次手动启动
+### Windows 一键启动（本机 MySQL 8.4）
 
-需要 Node.js 22.12+、npm 和 MySQL 8.4。以下命令在项目根目录执行，PowerShell 中可用 `npm.cmd` 代替 `npm`：
+已安装 MySQL 8.4 时，可在项目根目录双击 **`启动平台.cmd`**，或在 PowerShell 中执行：
 
 ```powershell
 npm.cmd ci
@@ -26,35 +26,50 @@ npm.cmd run setup
 npm.cmd run dev
 ```
 
-`setup` 按顺序启动独立 MySQL、生成 Prisma Client、应用迁移、填充演示数据。后端与前端均支持开发热更新。
+`setup` 按顺序启动项目独立 MySQL（3307）、生成 Prisma Client、应用迁移、填充演示数据。启动窗口需保持打开；`npm run db:stop` 安全停止本项目数据库并保留数据。
 
-### 数据位置和安全边界
-
-- 源码：`apps/web`、`apps/api`、`prisma`、`scripts`、`tests`。
-- MySQL 数据文件：`.local/mysql`。脚本使用相对数据路径，兼容当前中文目录。
-- 数据库连接、JWT 密钥、初始演示密码：根目录 `.env`。
-- 独立数据库管理信息：`.local/database.json`。
-- `.env` 和 `.local` 已加入 `.gitignore`，不要上传、公开或提交。
-- 脚本使用本机 MySQL 可执行程序，**不修改已有 MySQL84 服务、不使用 3306、不读取已有数据库**。
-- API、前端和独立 MySQL 仅绑定 `127.0.0.1`。此交付不包含互联网部署。
-
-如果 MySQL 安装位置不同，可先设置：
+若 `mysqld` 不在默认路径 `C:\Program Files\MySQL\MySQL Server 8.4\bin\mysqld.exe`，先设置：
 
 ```powershell
 $env:MYSQL_BIN = 'D:\MySQL\bin\mysqld.exe'
 npm.cmd run setup
 ```
 
-若使用自行管理的 MySQL：复制 `.env.example` 为 `.env`，填入真实连接、至少 32 字符的随机 JWT 密钥和至少 8 字符的演示密码，然后运行：
+脚本使用本机 MySQL 可执行程序，**不修改已有 MySQL 服务、不使用 3306、不读取已有数据库**。数据文件在 `.local/mysql`。
 
-```powershell
-npm.cmd run db:generate
-npm.cmd run db:migrate
-npm.cmd run db:seed
-npm.cmd run dev
+### 自备 MySQL / Docker（Linux、macOS 或任意自管库）
+
+非 Windows，或不想用 `db:local` / `启动平台.cmd` 时：
+
+1. 准备可连接的 MySQL 8（示例 Docker）：
+
+```bash
+docker compose -f docker-compose.mysql.yml up -d
 ```
 
-自行管理的数据库不运行 `db:local` 或 `启动平台.cmd`。迁移前核对目标数据库，应使用本项目专用空库。
+默认连接串：`mysql://nanyao:nanyao_local_dev@127.0.0.1:3307/nanyao`（仅本机映射）。
+
+2. 复制 `.env.example` 为 `.env`，填入 `DATABASE_URL`、至少 32 字符的 `JWT_SECRET`、至少 8 字符的 `DEMO_PASSWORD`。
+
+3. 在项目根目录执行：
+
+```bash
+npm ci
+npm run db:generate
+npm run db:migrate
+npm run db:seed
+npm run dev
+```
+
+自行管理的数据库不要运行 `db:local` 或 `启动平台.cmd`。迁移前核对目标库应为空的本项目专用库。
+
+### 数据位置和安全边界
+
+- 源码：`apps/web`、`apps/api`、`prisma`、`scripts`、`tests`。
+- 数据库连接、JWT 密钥、初始演示密码：根目录 `.env`。
+- 一键脚本状态：`.local/database.json`、演示账号 `.local/演示账号.txt`。
+- `.env` 和 `.local` 已加入 `.gitignore`，不要上传、公开或提交。
+- 此交付不包含互联网部署；保持 bind `127.0.0.1`。
 
 ## 功能与权限
 
@@ -138,7 +153,8 @@ prisma/
   migrations/    MySQL 初始化迁移
   seed.ts        幂等演示数据
 scripts/
-  local-db.mjs   独立 MySQL 启停
+  local-db.mjs   Windows 独立 MySQL 启停（非 Windows 见 README）
+docker-compose.mysql.yml  可选 Docker MySQL
 tests/
   api.test.mjs   业务接口集成测试
 ```

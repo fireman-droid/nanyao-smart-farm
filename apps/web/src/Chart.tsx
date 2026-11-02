@@ -3,20 +3,26 @@ import * as echarts from 'echarts/core';
 import { LineChart, PieChart } from 'echarts/charts';
 import { GridComponent, TooltipComponent, LegendComponent, GraphicComponent } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
-import type { EChartsCoreOption } from 'echarts/core';
+import type { EChartsCoreOption, EChartsType } from 'echarts/core';
 import type { Reading } from './types';
 import dayjs from 'dayjs';
 
 echarts.use([LineChart, PieChart, GridComponent, TooltipComponent, LegendComponent, GraphicComponent, CanvasRenderer]);
 export function Chart({ option, height = 280, label }: { option: EChartsCoreOption; height?: number; label: string }) {
   const el = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<EChartsType | null>(null);
+  const optionKey = JSON.stringify(option);
   useEffect(() => {
+    if (!el.current) return;
     const chart = echarts.init(el.current);
-    chart.setOption(option);
+    chartRef.current = chart;
     const observer = new ResizeObserver(() => chart.resize());
-    observer.observe(el.current!);
-    return () => { observer.disconnect(); chart.dispose(); };
-  }, [option]);
+    observer.observe(el.current);
+    return () => { observer.disconnect(); chart.dispose(); chartRef.current = null; };
+  }, []);
+  useEffect(() => {
+    chartRef.current?.setOption(JSON.parse(optionKey) as EChartsCoreOption, { notMerge: true });
+  }, [optionKey]);
   return <div ref={el} style={{ height, width: '100%' }} role="img" aria-label={label} />;
 }
 export function EnvironmentChart({ readings }: { readings: Reading[] }) {

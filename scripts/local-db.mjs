@@ -10,7 +10,8 @@ const local = join(root, '.local');
 const data = join(local, 'mysql');
 const statePath = join(local, 'database.json');
 const envPath = join(root, '.env');
-const binary = process.env.MYSQL_BIN ?? 'C:\\Program Files\\MySQL\\MySQL Server 8.4\\bin\\mysqld.exe';
+const defaultWindowsBin = 'C:\\Program Files\\MySQL\\MySQL Server 8.4\\bin\\mysqld.exe';
+const binary = process.env.MYSQL_BIN ?? (process.platform === 'win32' ? defaultWindowsBin : '');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 mkdirSync(local, { recursive: true });
 
@@ -28,7 +29,12 @@ async function main() {
     console.log('本项目 MySQL 已停止，数据保留在 .local/mysql。');
     return;
   }
-  if (!existsSync(binary)) throw new Error('请设置 MYSQL_BIN 为 mysqld 的绝对路径，或参照 .env.example 配置自己的数据库。');
+  if (!binary || !existsSync(binary)) {
+    const hint = process.platform === 'win32'
+      ? '请设置 MYSQL_BIN 为 mysqld.exe 的绝对路径，或参照 README「自备 MySQL / Docker」配置。'
+      : '一键独立 MySQL（db:local / 启动平台.cmd）面向 Windows + 本机 MySQL 8.4。当前非 Windows 环境请使用自备 MySQL，或 docker compose -f docker-compose.mysql.yml up -d 后按 README「自备 MySQL」配置 .env。';
+    throw new Error(hint);
+  }
   if (!stored && existsSync(envPath)) throw new Error('检测到已有 .env，不覆盖。请使用 db:generate、db:migrate、db:seed。');
   const state = stored ?? { rootPassword: randomBytes(24).toString('hex'), password: randomBytes(24).toString('hex'), ready: false };
   if (!stored) {

@@ -9,6 +9,7 @@ export interface Batch {
   id: number; code: string; herbId: number; plotId: number; herb: Herb; plot: Plot;
   plantedAt: string; expectedAt: string; quantity: number; notes: string;
   status: 'GROWING' | 'HARVESTED'; harvest?: Harvest | null;
+  _count?: { tasks: number; alerts: number };
 }
 export interface FarmTask {
   id: number; title: string; kind: string; batchId: number; batch: Batch; assigneeId: number;

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { App, Button, Empty, Input, Popconfirm, Space, Table, Tabs, Tag } from 'antd';
+import { App, Button, Empty, Input, Popconfirm, Space, Table, Tabs, Tag, Tooltip } from 'antd';
 import { DeleteOutlined, EditOutlined, EnvironmentOutlined, PlusOutlined, SearchOutlined, UserOutlined } from '@ant-design/icons';
 import { useSearchParams } from 'react-router-dom';
 import dayjs from 'dayjs';
@@ -13,6 +13,18 @@ const plotFields: Field[] = [
   { name: 'location', label: '地块位置', maxLength: 160 }, { name: 'soil', label: '土壤类型', maxLength: 60 },
   { name: 'manager', label: '地块负责人', maxLength: 40 },
 ];
+
+function batchLocked(batch: Batch): boolean {
+  if (batch.status === 'HARVESTED') return true;
+  const counts = batch._count;
+  return Boolean(counts && (counts.tasks > 0 || counts.alerts > 0));
+}
+
+function lockReason(batch: Batch): string {
+  if (batch.status === 'HARVESTED') return '已采收批次不可再编辑或删除';
+  return '已有农事或预警记录，为保留溯源关联不可再编辑或删除';
+}
+
 export default function Planting() {
   const plots = useData<Plot[]>('/plots');
   const batches = useData<Batch[]>('/batches');
@@ -60,7 +72,22 @@ export default function Planting() {
           { title: '种植地块', render: (_, b) => b.plot.name }, { title: '种植数量', dataIndex: 'quantity', render: (v: number) => `${v.toLocaleString()} 株` },
           { title: '种植日期', dataIndex: 'plantedAt', render: date }, { title: '预计采收', dataIndex: 'expectedAt', render: date },
           { title: '状态', dataIndex: 'status', filters: [{ text: '种植中', value: 'GROWING' }, { text: '已采收', value: 'HARVESTED' }], onFilter: (v, b) => b.status === v, render: (v) => <Status status={v} /> },
-          ...(admin ? [{ title: '操作', key: 'actions', render: (_: unknown, b: Batch) => <Space><Button type="link" disabled={b.status === 'HARVESTED'} onClick={() => open('batch', b)}>编辑</Button><Popconfirm title="删除此种植批次？" description="有关联业务记录的批次不可删除。" onConfirm={() => remove('batches', b.id)}><Button type="link" danger disabled={b.status === 'HARVESTED'}>删除</Button></Popconfirm></Space> }] : []),
+          ...(admin ? [{ title: '操作', key: 'actions', render: (_: unknown, b: Batch) => {
+            const locked = batchLocked(b);
+            const reason = lockReason(b);
+            return <Space>
+              <Tooltip title={locked ? reason : undefined}>
+                <Button type="link" disabled={locked} onClick={() => open('batch', b)}>编辑</Button>
+              </Tooltip>
+              <Tooltip title={locked ? reason : undefined}>
+                <span>
+                  <Popconfirm title="删除此种植批次？" description="有关联业务记录的批次不可删除。" disabled={locked} onConfirm={() => remove('batches', b.id)}>
+                    <Button type="link" danger disabled={locked}>删除</Button>
+                  </Popconfirm>
+                </span>
+              </Tooltip>
+            </Space>;
+          } }] : []),
         ]} expandable={{ expandedRowRender: (b) => <p className="muted">种植备注：{b.notes || '暂无备注'}</p> }} /></section>}
     </DataState>
     <Editor title={`${editing ? '编辑' : '新增'}${modal === 'plot' ? '地块' : '种植批次'}`} open={Boolean(modal)} onClose={() => setModal(undefined)} onSaved={refresh} path={`/${modal === 'plot' ? 'plots' : 'batches'}${editing ? `/${editing.id}` : ''}`} method={editing ? 'PUT' : 'POST'} fields={modal === 'plot' ? plotFields : batchFields} initial={initial} />

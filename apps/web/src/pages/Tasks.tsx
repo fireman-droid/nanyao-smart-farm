@@ -14,6 +14,7 @@ export default function Tasks() {
   const user = useUser();
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('TODO');
+  const [kind, setKind] = useState<string | 'ALL'>('ALL');
   const [owner, setOwner] = useState<number | 'ALL'>('ALL');
   const [creating, setCreating] = useState(false);
   const [completing, setCompleting] = useState<FarmTask>();
@@ -25,12 +26,20 @@ export default function Tasks() {
     { name: 'dueAt', label: '计划完成时间', type: 'datetime-local' },
     { name: 'notes', label: '操作要求', type: 'textarea', required: false },
   ];
-  const records = state.data?.filter((t) => (status === 'ALL' || t.status === status) && (owner === 'ALL' || t.assigneeId === owner) && `${t.title} ${t.batch.code} ${t.batch.herb.name}`.includes(search));
+  const records = state.data?.filter((t) =>
+    (status === 'ALL' || t.status === status)
+    && (kind === 'ALL' || t.kind === kind)
+    && (owner === 'ALL' || t.assigneeId === owner)
+    && `${t.title} ${t.batch.code} ${t.batch.herb.name}`.includes(search));
   const todo = state.data?.filter((t) => t.status === 'TODO') ?? [];
   return <>
     <PageTitle eyebrow="FIELD OPERATIONS" title="农事管理" description="安排每一次田间作业，让执行过程与种植档案相连接。" action={<><Refresh onClick={refresh} />{user.role === 'ADMIN' && <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreating(true)}>安排农事</Button>}</>} />
     <div className="summary-strip"><div><span>待执行任务</span><strong>{todo.length}<small> 项</small></strong></div><div><span>其中已逾期</span><strong className="amber-text">{todo.filter((t) => dayjs(t.dueAt).isBefore(dayjs())).length}<small> 项</small></strong></div><div><span>已完成记录</span><strong>{state.data?.filter((t) => t.status === 'DONE').length ?? 0}<small> 项</small></strong></div><p>完成农事需填写实际操作结果。<br />种植人员只能完成分配给自己的任务。</p></div>
-    <div className="toolbar"><Segmented value={status} onChange={setStatus} options={[{ value: 'TODO', label: '待执行' }, { value: 'DONE', label: '已完成' }, { value: 'ALL', label: '全部农事' }]} /><Space wrap><Select aria-label="筛选农事负责人" value={owner} onChange={setOwner} style={{ width: 140 }} options={[{ value: 'ALL', label: '全部负责人' }, { value: user.id, label: '只看我的任务' }]} /><Input aria-label="搜索农事" prefix={<SearchOutlined />} placeholder="搜索农事或批次" allowClear value={search} onChange={(e) => setSearch(e.target.value)} style={{ width: 230 }} /></Space></div>
+    <div className="toolbar"><Segmented value={status} onChange={setStatus} options={[{ value: 'TODO', label: '待执行' }, { value: 'DONE', label: '已完成' }, { value: 'ALL', label: '全部农事' }]} /><Space wrap>
+      <Select aria-label="筛选农事类型" value={kind} onChange={setKind} style={{ width: 140 }} options={[{ value: 'ALL', label: '全部类型' }, ...kindOptions]} />
+      <Select aria-label="筛选农事负责人" value={owner} onChange={setOwner} style={{ width: 140 }} options={[{ value: 'ALL', label: '全部负责人' }, { value: user.id, label: '只看我的任务' }]} />
+      <Input aria-label="搜索农事" prefix={<SearchOutlined />} placeholder="搜索农事或批次" allowClear value={search} onChange={(e) => setSearch(e.target.value)} style={{ width: 230 }} />
+    </Space></div>
     <DataState loading={state.loading || batches.loading || users.loading} error={state.error || batches.error || users.error} reload={refresh}>
       <section className="panel table-panel"><Table<FarmTask> rowKey="id" dataSource={records} scroll={{ x: 1050 }} pagination={{ pageSize: 8, showSizeChanger: false }} columns={[
         { title: '农事任务', render: (_, t) => <div className="table-primary"><strong>{t.title}</strong><span>{t.batch.herb.name} · {t.batch.code}</span></div> },
