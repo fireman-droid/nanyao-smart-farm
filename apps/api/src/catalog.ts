@@ -1,6 +1,7 @@
 import { BadRequestException, Body, ConflictException, Controller, Delete, Get, Injectable, NotFoundException, Param, ParseIntPipe, Post, Put } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { Admin } from './auth';
+import { calendarDay, parseCalendarDate, todayCalendarDay } from './dates';
 import { Db } from './db';
 import { BatchDto, HerbDto, PlotDto } from './dto';
 
@@ -16,12 +17,23 @@ function validateHerb(data: HerbDto) {
     throw new BadRequestException('适宜范围的下限必须小于上限。');
   }
 }
-function validateBatch(data: BatchDto) {
-  if (new Date(data.expectedAt) < new Date(data.plantedAt)) {
+/** Compare planting / expected dates as Asia/Shanghai calendar days; optionally keep prior DateTime when the day is unchanged. */
+function validateBatch(data: BatchDto, existing?: { plantedAt: Date; expectedAt: Date }) {
+  const plantedDay = calendarDay(data.plantedAt);
+  const expectedDay = calendarDay(data.expectedAt);
+  if (expectedDay < plantedDay) {
     throw new BadRequestException('预计采收日期不能早于种植日期。');
   }
-  if (new Date(data.plantedAt).getTime() > Date.now()) throw new BadRequestException('种植日期不能在未来。');
-  return { ...data, plantedAt: new Date(data.plantedAt), expectedAt: new Date(data.expectedAt) };
+  if (plantedDay > todayCalendarDay()) {
+    throw new BadRequestException('种植日期不能在未来。');
+  }
+  let plantedAt = parseCalendarDate(data.plantedAt);
+  let expectedAt = parseCalendarDate(data.expectedAt);
+  if (existing) {
+    if (calendarDay(existing.plantedAt) === plantedDay) plantedAt = existing.plantedAt;
+    if (calendarDay(existing.expectedAt) === expectedDay) expectedAt = existing.expectedAt;
+  }
+  return { ...data, plantedAt, expectedAt };
 }
 
 @Injectable()
@@ -29,7 +41,16 @@ export class CatalogService {
   constructor(private db: Db) {}
   herbs() { return this.db.herb.findMany({ orderBy: { id: 'asc' }, include: { _count: { select: { batches: true } } } }); }
   plots() { return this.db.plot.findMany({ orderBy: { id: 'asc' }, include: { batches: { where: { status: 'GROWING' }, include: { herb: true } } } }); }
-  batches() { return this.db.batch.findMany({ orderBy: { plantedAt: 'desc' }, include: { ...batchInclude, harvest: true } }); }
+  batches() {
+    return this.db.batch.findMany({
+      orderBy: { plantedAt: 'desc' },
+      include: {
+        ...batchInclude,
+        harvest: true,
+        _count: { select: { tasks: true, alerts: true } },
+      },
+    });
+  }
   createHerb(data: HerbDto) { validateHerb(data); return this.db.herb.create({ data }); }
   updateHerb(id: number, data: HerbDto) { validateHerb(data); return this.db.herb.update({ where: { id }, data }); }
   deleteHerb(id: number) { return this.db.herb.delete({ where: { id } }); }
@@ -38,11 +59,11 @@ export class CatalogService {
   deletePlot(id: number) { return this.db.plot.delete({ where: { id } }); }
   createBatch(data: BatchDto) { return this.db.batch.create({ data: validateBatch(data), include: batchInclude }); }
   updateBatch(id: number, data: BatchDto) {
-    const values = validateBatch(data);
     return this.db.$transaction(async (tx) => {
-      await growingBatch(tx, id);
+      const current = await growingBatch(tx, id);
       const linked = await tx.farmTask.count({ where: { batchId: id } }) + await tx.alert.count({ where: { batchId: id } });
       if (linked) throw new ConflictException('批次已有农事或监测记录，为保留溯源关联不可再编辑。');
+      const values = validateBatch(data, current);
       return tx.batch.update({ where: { id }, data: values, include: batchInclude });
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }

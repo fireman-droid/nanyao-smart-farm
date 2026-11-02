@@ -5,15 +5,15 @@
   "workspaces": ["apps/api", "apps/web"],
   "scripts": {
     "dev": "concurrently -k -n API,WEB -c green,blue \"npm run dev -w apps/api\" \"npm run dev -w apps/web\"",
-    "build": "npm run build -w apps/api && npm run build -w apps/web",
-    "typecheck": "npm run typecheck -w apps/api && npm run typecheck -w apps/web",
+    "build": "npm run db:generate && npm run build -w apps/api && npm run build -w apps/web",
+    "typecheck": "npm run db:generate && npm run typecheck -w apps/api && npm run typecheck -w apps/web",
     "db:local": "node scripts/local-db.mjs",
     "db:stop": "node scripts/local-db.mjs stop",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
     "setup": "npm run db:local && npm run db:generate && npm run db:migrate && npm run db:seed",
-    "test": "npm run build -w apps/api && node --test tests/api.test.mjs"
+    "test": "npm run db:generate && npm run build -w apps/api && node --test tests/api.test.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.19.0",

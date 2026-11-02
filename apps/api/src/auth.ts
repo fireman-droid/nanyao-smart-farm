@@ -19,6 +19,28 @@ class LoginDto {
   @IsString() @IsNotEmpty() @MaxLength(100) password!: string;
 }
 
+/** Simple in-memory login throttle for localhost demos (per client IP). */
+const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+const LOGIN_WINDOW_MS = 60_000;
+const LOGIN_MAX_ATTEMPTS = 10;
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function clientIp(req: Request): string {
+  return req.ip || req.socket.remoteAddress || 'unknown';
+}
+
+function noteLoginFailure(ip: string): number {
+  const now = Date.now();
+  const current = loginAttempts.get(ip);
+  if (!current || current.resetAt <= now) {
+    loginAttempts.set(ip, { count: 1, resetAt: now + LOGIN_WINDOW_MS });
+    return 1;
+  }
+  current.count += 1;
+  loginAttempts.set(ip, current);
+  return current.count;
+}
+
 @Injectable()
 class AccessGuard implements CanActivate {
   constructor(private reflector: Reflector, private jwt: JwtService, private db: Db) {}
@@ -46,11 +68,20 @@ class AccessGuard implements CanActivate {
 class AuthController {
   constructor(private db: Db, private jwt: JwtService) {}
   @Public() @Post('login')
-  async login(@Body() data: LoginDto) {
+  async login(@Req() req: Request, @Body() data: LoginDto) {
+    const ip = clientIp(req);
+    const now = Date.now();
+    const tracked = loginAttempts.get(ip);
+    if (tracked && tracked.resetAt > now && tracked.count >= LOGIN_MAX_ATTEMPTS) {
+      throw new UnauthorizedException('登录尝试过于频繁，请稍后再试。');
+    }
     const user = await this.db.user.findUnique({ where: { username: data.username } });
     if (!user || !(await compare(data.password, user.passwordHash))) {
+      const failures = noteLoginFailure(ip);
+      await sleep(Math.min(failures * 200, 2000));
       throw new UnauthorizedException('用户名或密码错误。');
     }
+    loginAttempts.delete(ip);
     return {
       token: await this.jwt.signAsync({ sub: user.id }),
       user: { id: user.id, username: user.username, name: user.name, role: user.role },

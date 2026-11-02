@@ -9,6 +9,9 @@ let app, db, base, admin, farmer, farmerId, adminId;
 const ids = { herbs: [], plots: [], batches: [] };
 const suffix = randomBytes(5).toString('hex');
 const day = (offset) => new Date(Date.now() + offset * 86400000).toISOString();
+const calendarDay = (value = new Date()) => new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
+}).format(new Date(value));
 async function request(path, method = 'GET', data, token = admin) {
   const response = await fetch(`${base}${path}`, {
     method,
@@ -78,13 +81,31 @@ test('档案与种植批次：校验范围、日期、重复编号和外键保�
   const values = { code: `TEST-${suffix}`, herbId: herb.id, plotId: plot.id, plantedAt: day(-10), expectedAt: day(110), quantity: 500 };
   assert.equal((await request('/batches', 'POST', { ...values, expectedAt: day(-20) })).status, 400);
   assert.equal((await request('/batches', 'POST', { ...values, plantedAt: day(1) })).status, 400);
-  assert.equal((await request('/batches', 'POST', { ...values, herbId: 2147483647 })).status, 409);
+  const missingFk = await request('/batches', 'POST', { ...values, herbId: 2147483647 });
+  assert.equal(missingFk.status, 404);
+  assert.match(missingFk.body.message ?? '', /关联.*不存在/);
+  // Asia/Shanghai calendar "today" as YYYY-MM-DD must be accepted (not treated as future UTC midnight).
+  const todayOnly = await request('/batches', 'POST', {
+    ...values, code: `TEST-TODAY-${suffix}`, plantedAt: calendarDay(), expectedAt: calendarDay(Date.now() + 90 * 86400000),
+  });
+  assert.equal(todayOnly.status, 201, todayOnly.body.message ?? 'today YYYY-MM-DD should create');
+  ids.batches.push(todayOnly.body.id);
   result = await request('/batches', 'POST', values);
   assert.equal(result.status, 201); batch = result.body; ids.batches.push(batch.id);
-  assert.equal((await request(`/herbs/${herb.id}`, 'DELETE')).status, 409);
+  const originalPlanted = batch.plantedAt;
+  const blockedDelete = await request(`/herbs/${herb.id}`, 'DELETE');
+  assert.equal(blockedDelete.status, 409);
+  assert.match(blockedDelete.body.message ?? '', /无法删除/);
   assert.equal((await request(`/plots/${plot.id}`, 'DELETE')).status, 409);
-  result = await request(`/batches/${batch.id}`, 'PUT', { ...values, notes: '修改后的种植备注' });
+  // Editing notes with the same calendar day must not rewrite plantedAt DateTime.
+  result = await request(`/batches/${batch.id}`, 'PUT', {
+    ...values,
+    plantedAt: calendarDay(batch.plantedAt),
+    expectedAt: calendarDay(batch.expectedAt),
+    notes: '修改后的种植备注',
+  });
   assert.equal(result.status, 200); assert.equal(result.body.notes, '修改后的种植备注');
+  assert.equal(result.body.plantedAt, originalPlanted);
 });
 
 test('模拟监测：异常触发预警、未处理预警去重、处理后允许再次触发', async () => {
@@ -92,7 +113,8 @@ test('模拟监测：异常触发预警、未处理预警去重、处理后允�
   let result = await request('/monitoring/simulate', 'POST', { plotId: plot.id, scenario: 'NORMAL' });
   assert.equal(result.status, 201); assert.equal(result.body.createdAlerts, 0); assert.equal(result.body.reading.simulated, true);
   result = await request('/monitoring/simulate', 'POST', { plotId: plot.id, scenario: 'DRY' });
-  assert.equal(result.body.createdAlerts, 1);
+  // Same plot has two GROWING batches (today calendar-day + primary); simulate(DRY) alerts each.
+  assert.equal(result.body.createdAlerts, 2);
   result = await request('/monitoring/simulate', 'POST', { plotId: plot.id, scenario: 'DRY' });
   assert.equal(result.body.createdAlerts, 0);
   const alert = await db.alert.findFirstOrThrow({ where: { batchId: batch.id, status: 'OPEN' } });

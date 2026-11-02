@@ -1,0 +1,18 @@
+# Optional MySQL for non-Windows / self-managed setups.
+# Usage: docker compose -f docker-compose.mysql.yml up -d
+# Then copy .env.example → .env and set DATABASE_URL to match (default password below).
+services:
+  mysql:
+    image: mysql:8.4
+    ports:
+      - "127.0.0.1:3307:3306"
+    environment:
+      MYSQL_DATABASE: nanyao
+      MYSQL_USER: nanyao
+      MYSQL_PASSWORD: nanyao_local_dev
+      MYSQL_ROOT_PASSWORD: nanyao_root_local
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci", "--bind-address=0.0.0.0"]
+    volumes:
+      - nanyao-mysql:/var/lib/mysql
+volumes:
+  nanyao-mysql:
