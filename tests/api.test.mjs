@@ -113,7 +113,8 @@ test('模拟监测：异常触发预警、未处理预警去重、处理后允�
   let result = await request('/monitoring/simulate', 'POST', { plotId: plot.id, scenario: 'NORMAL' });
   assert.equal(result.status, 201); assert.equal(result.body.createdAlerts, 0); assert.equal(result.body.reading.simulated, true);
   result = await request('/monitoring/simulate', 'POST', { plotId: plot.id, scenario: 'DRY' });
-  assert.equal(result.body.createdAlerts, 1);
+  // Same plot has two GROWING batches (today calendar-day + primary); simulate(DRY) alerts each.
+  assert.equal(result.body.createdAlerts, 2);
   result = await request('/monitoring/simulate', 'POST', { plotId: plot.id, scenario: 'DRY' });
   assert.equal(result.body.createdAlerts, 0);
   const alert = await db.alert.findFirstOrThrow({ where: { batchId: batch.id, status: 'OPEN' } });
