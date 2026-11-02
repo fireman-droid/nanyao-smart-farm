@@ -1,0 +1,142 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+enum Role {
+  ADMIN
+  FARMER
+}
+enum BatchStatus {
+  GROWING
+  HARVESTED
+}
+enum TaskStatus {
+  TODO
+  DONE
+}
+enum TaskKind {
+  WATER
+  FERTILIZE
+  WEED
+  INSPECT
+  OTHER
+}
+enum AlertStatus {
+  OPEN
+  RESOLVED
+}
+model User {
+  id           Int      @id @default(autoincrement())
+  username     String   @unique @db.VarChar(40)
+  passwordHash String   @db.VarChar(100)
+  name         String   @db.VarChar(40)
+  role         Role     @default(FARMER)
+  tasks        FarmTask[]
+  harvests     Harvest[]
+  createdAt    DateTime @default(now())
+}
+model Herb {
+  id             Int     @id @default(autoincrement())
+  name           String  @unique @db.VarChar(60)
+  scientificName String  @db.VarChar(120)
+  family         String  @db.VarChar(40)
+  part           String  @db.VarChar(60)
+  region         String  @db.VarChar(120)
+  description    String  @db.Text
+  growthDays     Int
+  tempMin        Float
+  tempMax        Float
+  moistureMin    Float
+  moistureMax    Float
+  batches        Batch[]
+  createdAt      DateTime @default(now())
+}
+model Plot {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique @db.VarChar(60)
+  location  String   @db.VarChar(160)
+  area      Float
+  soil      String   @db.VarChar(60)
+  manager   String   @db.VarChar(40)
+  batches   Batch[]
+  readings  Reading[]
+  createdAt DateTime @default(now())
+}
+model Batch {
+  id          Int         @id @default(autoincrement())
+  code        String      @unique @db.VarChar(40)
+  herbId      Int
+  plotId      Int
+  herb        Herb        @relation(fields: [herbId], references: [id], onDelete: Restrict)
+  plot        Plot        @relation(fields: [plotId], references: [id], onDelete: Restrict)
+  plantedAt   DateTime
+  expectedAt  DateTime
+  quantity    Int
+  status      BatchStatus @default(GROWING)
+  notes       String      @default("") @db.VarChar(500)
+  tasks       FarmTask[]
+  alerts      Alert[]
+  harvest     Harvest?
+  createdAt   DateTime    @default(now())
+  @@index([plotId, status])
+}
+model FarmTask {
+  id          Int        @id @default(autoincrement())
+  title       String     @db.VarChar(100)
+  kind        TaskKind
+  batchId     Int
+  assigneeId  Int
+  batch       Batch      @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  assignee    User       @relation(fields: [assigneeId], references: [id], onDelete: Restrict)
+  dueAt       DateTime
+  status      TaskStatus @default(TODO)
+  notes       String     @default("") @db.VarChar(500)
+  result      String     @default("") @db.VarChar(500)
+  completedAt DateTime?
+  createdAt   DateTime   @default(now())
+  @@index([status, dueAt])
+}
+model Reading {
+  id          Int      @id @default(autoincrement())
+  plotId      Int
+  plot        Plot     @relation(fields: [plotId], references: [id], onDelete: Restrict)
+  temperature Float
+  humidity    Float
+  moisture    Float
+  light       Float
+  simulated   Boolean  @default(true)
+  recordedAt  DateTime @default(now())
+  alerts      Alert[]
+  @@index([plotId, recordedAt])
+}
+model Alert {
+  id         Int         @id @default(autoincrement())
+  batchId    Int
+  readingId  Int
+  batch      Batch       @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  reading    Reading     @relation(fields: [readingId], references: [id], onDelete: Restrict)
+  metric     String      @db.VarChar(30)
+  message    String      @db.VarChar(200)
+  status     AlertStatus @default(OPEN)
+  resolution String      @default("") @db.VarChar(500)
+  resolvedAt DateTime?
+  createdAt  DateTime    @default(now())
+  @@index([status])
+}
+model Harvest {
+  id          Int      @id @default(autoincrement())
+  batchId     Int      @unique
+  batch       Batch    @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  operatorId  Int
+  operator    User     @relation(fields: [operatorId], references: [id], onDelete: Restrict)
+  traceCode   String   @unique @db.VarChar(50)
+  harvestedAt DateTime
+  weight      Float
+  grade       String   @db.VarChar(30)
+  destination String   @db.VarChar(120)
+  notes       String   @default("") @db.VarChar(500)
+  createdAt   DateTime @default(now())
+}
